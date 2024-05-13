@@ -53,7 +53,7 @@ const (
 	iterations       = 5
 )
 
-fun main() {
+func main() {
   batcher, err := ubatch.NewBatcher[Job](
 		&BatchProcessor{},
 		ubatch.WithSize(batchSize),
