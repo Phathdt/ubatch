@@ -47,7 +47,7 @@ func main() {
 		panic(err)
 	}
 
-	go batcher.Run()
+	batcher.Run()
 	jobs := make([]Job, iterations)
 	for i := 0; i < iterations; i++ {
 		jobs[i] = Job{data: fmt.Sprintf("job %d", i)}
@@ -55,12 +55,16 @@ func main() {
 
 	batcher.SubmitJobs(jobs)
 
-	results := make([]ubatch.JobResult, iterations)
+	results := make([]ubatch.JobResult, 0)
 	resultChan := batcher.GetResults()
 	for i := 0; i < iterations; i++ {
-		results[i] = <-resultChan
+		result := <-resultChan
+		results = append(results, result)
 	}
 
 	fmt.Println("results", results)
+
 	batcher.Shutdown()
+
+	fmt.Println("batcher shutdown")
 }

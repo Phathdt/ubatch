@@ -2,6 +2,7 @@ package ubatch
 
 import (
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -18,7 +19,8 @@ type Batcher[J Job] struct {
 	batchTimeout time.Duration
 
 	//for shutdown
-	quit chan struct{}
+	quit chan int
+	wg   sync.WaitGroup
 }
 
 func NewBatcher[J Job](processor BatchProcessor, opts ...Option) (*Batcher[J], error) {
@@ -45,14 +47,13 @@ func NewBatcher[J Job](processor BatchProcessor, opts ...Option) (*Batcher[J], e
 		processor:    processor,
 		batchSize:    option.size,
 		batchTimeout: option.timeout,
-		quit:         make(chan struct{}),
+		quit:         make(chan int),
 	}
 
 	return b, nil
 }
 
 func (b *Batcher[J]) Submit(job J) JobResult {
-	b.jobs <- job
 	res := b.processor.Process([]Job{job})
 
 	return res[0]
@@ -62,52 +63,69 @@ func (b *Batcher[J]) SubmitJobs(jobs []J) {
 	go func(jobs []J) {
 		for _, job := range jobs {
 			b.jobs <- job
+			b.wg.Add(1)
 		}
 	}(jobs)
 }
 
 func (b *Batcher[J]) Run() {
-	batchJob := make([]Job, 0, b.batchSize)
+	b.wg.Add(1)
 
-	ticker := time.NewTicker(b.batchTimeout)
+	go func() {
+		defer b.wg.Done()
 
-	for {
-		select {
-		case job := <-b.jobs:
-			batchJob = append(batchJob, job)
+		batchJob := make([]Job, 0, b.batchSize)
 
-			if len(batchJob) == b.batchSize {
-				results := b.processor.Process(batchJob)
+		ticker := time.NewTicker(b.batchTimeout)
+		for {
+			select {
+			case <-b.quit:
+				ticker.Stop()
 
-				for _, result := range results {
-					b.results <- result
+				if len(batchJob) > 0 {
+					b.processBatch(batchJob)
+				}
+				return
+
+			case job := <-b.jobs:
+				batchJob = append(batchJob, job)
+
+				if len(batchJob) == b.batchSize {
+					b.processBatch(batchJob)
+
+					batchJob = make([]Job, 0, b.batchSize)
+
+					ticker.Reset(b.batchTimeout)
 				}
 
-				batchJob = make([]Job, 0, b.batchSize)
+			case <-ticker.C:
+				if len(batchJob) > 0 {
+					b.processBatch(batchJob)
 
-				ticker.Reset(b.batchTimeout)
-			}
-
-		case <-ticker.C:
-			if len(batchJob) > 0 {
-				results := b.processor.Process(batchJob)
-
-				for _, result := range results {
-					b.results <- result
+					batchJob = make([]Job, 0, b.batchSize)
 				}
 
-				batchJob = make([]Job, 0, b.batchSize)
 			}
-
-		case <-b.quit:
-			return
 		}
+	}()
+}
+
+func (b *Batcher[J]) processBatch(batch []Job) {
+	results := b.processor.Process(batch)
+
+	for _, result := range results {
+		b.results <- result
+	}
+
+	for _ = range batch {
+		b.wg.Done()
 	}
 }
 
 // Shutdown waits for all submitted jobs to be processed before returning.
 func (b *Batcher[J]) Shutdown() {
 	close(b.quit)
+	b.wg.Wait()
 	close(b.jobs)
 	close(b.results)
 }
