@@ -1,7 +1,8 @@
-package main
+package ubatch_test
 
 import (
 	"fmt"
+	"testing"
 	"time"
 	"ubatch"
 )
@@ -38,7 +39,7 @@ func (c *BatchProcessor) Process(jobs []ubatch.Job) []ubatch.JobResult {
 	return results
 }
 
-func main() {
+func TestExample(t *testing.T) {
 	batcher, err := ubatch.NewBatcher[Job](
 		&BatchProcessor{},
 		ubatch.WithSize(batchSize),
@@ -62,9 +63,9 @@ func main() {
 		results = append(results, result)
 	}
 
-	fmt.Println("results", results)
-
 	batcher.Shutdown()
 
-	fmt.Println("batcher shutdown")
+	if len(results) != iterations {
+		t.Errorf("expected results have %d element , got %d", iterations, len(results))
+	}
 }
