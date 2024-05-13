@@ -1,7 +1,6 @@
 package ubatch
 
 import (
-	"errors"
 	"sync"
 	"time"
 )
@@ -132,61 +131,4 @@ func (b *Batcher[J]) Shutdown() {
 
 func (b *Batcher[J]) GetResults() <-chan JobResult {
 	return b.results
-}
-
-var (
-	ErrNoProcessor = errors.New("no processor")
-	ErrSize        = errors.New("size should be greater than zero")
-	ErrTimeout     = errors.New("timeout should be greater than zero")
-)
-
-type Job interface {
-	Do() (interface{}, error)
-}
-
-// JobResult represents the result of processing a Job.
-type JobResult struct {
-	Job    Job
-	Result interface{}
-	Err    error
-}
-
-// BatchProcessor defines the interface for processing jobs in batches.
-type BatchProcessor interface {
-	Process([]Job) []JobResult
-}
-
-type options struct {
-	size    int
-	timeout time.Duration
-}
-
-type Option interface {
-	apply(opts *options)
-}
-
-// WithSize config size of batch
-func WithSize(size int) Option {
-	return sizeOption{size: size}
-}
-
-type sizeOption struct {
-	size int
-}
-
-func (o sizeOption) apply(opts *options) {
-	opts.size = o.size
-}
-
-// WithTimeout config timeout.
-func WithTimeout(timeout time.Duration) Option {
-	return timeoutOption{timeout: timeout}
-}
-
-type timeoutOption struct {
-	timeout time.Duration
-}
-
-func (o timeoutOption) apply(opts *options) {
-	opts.timeout = o.timeout
 }
