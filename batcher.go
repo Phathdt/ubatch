@@ -8,7 +8,7 @@ import (
 type Batcher[J Job] struct {
 	jobs chan J
 
-	Results   chan JobResult
+	results   chan JobResult
 	processor BatchProcessor
 
 	//batchSize is the maximum requests per batch
@@ -41,7 +41,7 @@ func NewBatcher[J Job](processor BatchProcessor, opts ...Option) (*Batcher[J], e
 
 	b := &Batcher[J]{
 		jobs:         make(chan J),
-		Results:      make(chan JobResult),
+		results:      make(chan JobResult),
 		processor:    processor,
 		batchSize:    option.size,
 		batchTimeout: option.timeout,
@@ -69,6 +69,8 @@ func (b *Batcher[J]) SubmitJobs(jobs []J) {
 func (b *Batcher[J]) Run() {
 	batchJob := make([]Job, 0, b.batchSize)
 
+	ticker := time.NewTicker(b.batchTimeout)
+
 	for {
 		select {
 		case job := <-b.jobs:
@@ -78,18 +80,20 @@ func (b *Batcher[J]) Run() {
 				results := b.processor.Process(batchJob)
 
 				for _, result := range results {
-					b.Results <- result
+					b.results <- result
 				}
 
 				batchJob = make([]Job, 0, b.batchSize)
+
+				ticker.Reset(b.batchTimeout)
 			}
 
-		case <-time.After(b.batchTimeout):
+		case <-ticker.C:
 			if len(batchJob) > 0 {
 				results := b.processor.Process(batchJob)
 
 				for _, result := range results {
-					b.Results <- result
+					b.results <- result
 				}
 
 				batchJob = make([]Job, 0, b.batchSize)
@@ -105,7 +109,11 @@ func (b *Batcher[J]) Run() {
 func (b *Batcher[J]) Shutdown() {
 	close(b.quit)
 	close(b.jobs)
-	close(b.Results)
+	close(b.results)
+}
+
+func (b *Batcher[J]) GetResults() <-chan JobResult {
+	return b.results
 }
 
 var (

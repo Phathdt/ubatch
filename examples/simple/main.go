@@ -8,7 +8,7 @@ import (
 
 const (
 	batchSize        = 3
-	maxBatchDuration = 3 * time.Second
+	maxBatchDuration = 1 * time.Second
 	iterations       = 5
 )
 
@@ -56,8 +56,9 @@ func main() {
 	batcher.SubmitJobs(jobs)
 
 	results := make([]ubatch.JobResult, iterations)
+	resultChan := batcher.GetResults()
 	for i := 0; i < iterations; i++ {
-		results[i] = <-batcher.Results
+		results[i] = <-resultChan
 	}
 
 	fmt.Println("results", results)
